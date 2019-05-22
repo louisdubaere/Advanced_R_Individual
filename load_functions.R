@@ -33,3 +33,18 @@ split_train_test <- function(df, train=0.8, seed=2112) {
   return(mylist)
 }
 
+calculate_MAPE_lm <- function(data) {
+  splitted <- split_train_test(data)
+  lm <- lm(price~., data = splitted$Train)
+  p <- predict(lm, splitted$Test)
+  MAPE <- MAPE(y_pred = p, y_true = splitted$Test$price)
+  return(MAPE)
+}
+
+calculate_MAPE_rf <- function(data) {
+  splitted <- split_train_test(data)
+  rf <- randomForest(price~., data = splitted$Train)
+  p <- predict(rf, splitted$Test)
+  MAPE <- MAPE(y_pred = p, y_true = splitted$Test$price)
+  return(MAPE)
+}

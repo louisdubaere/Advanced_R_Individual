@@ -104,34 +104,56 @@ We can see some interesting patterns in these density plots.
 
 # Data Preparation
 
+For the data preparation, we start by extracting the year, month and day from the date column. After that, we drop the zipcode, id and date column.
+
 ```{r drop_columns and add_date_info}
-train_dropped <- drop_columns(train_factorized, c("zipcode", "id"))
 
 date_list <- strsplit(as.character(train_dropped$date), "/")
 train_dropped$year <- sapply(date_list, function(x) as.character(x[3]))
-train_dropped$month <- sapply(date_list, function(x) x[1])
-train_dropped$day <- sapply(date_list, function(x) x[2])
+train_dropped$month <- sapply(date_list, function(x) as.numeric(x[1]))
+train_dropped$day <- sapply(date_list, function(x) as.numeric(x[2]))
 
-train_dropped$date <- NULL
+train_dropped <- drop_columns(train_factorized, c("zipcode", "id", "date"))
 ```
 
 # Baseline model
 
+Now we will train a linear regression model on our prepared data. We split the data in 80% train and 20% test.
+
 ```{r train_test}
-splitted <- split_train_test(train_dropped)
+#splitted <- split_train_test(train_dropped)
 ```
 
+We train a linear regression model to predict the price.
 
 ```{r baseline}
+calculate_MAPE_lm(train_dropped)
+```
 
-lm <- lm(price~., data = splitted$Train)
-summary(lm)
+The baseline MAPE score is 25.33 %.
+
+## Feature Engineering
+
+We will now try to do feature engineering, in order to improve the MAPE score.
+
+First of all, we will add a column that represents the fact that a house got renovated or not. After that we add the age of the house.
+
+```{r renovated}
+
+train_engineered <- transform(train_dropped, renovated= ifelse(yr_renovated==0, 0, 1))
+train_engineered$age <- as.numeric(train_engineered$year) - train_engineered$yr_built
 
 ```
 
 
-# 
+```{r test}
+x <- drop_columns(train_engineered, c("price"))
+y <- train_engineered$price
+lambda <- 10^seq(10, -2, length = 100)
 
+ridge.mod <- glmnet(x, y, alpha = 0, lambda = lambda)
 
+predict(ridge.mod, data = splitted$Train)
 
+```
 
