@@ -9,13 +9,12 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-## R Markdown
+## Load the data
 
-This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+First, we will load the data and the different scripts that provide the necessary libraries and functions.
 
-When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
 
-```{r load data and functions/libraries}
+```{r load data and functions/libraries, message=FALSE, warning=FALSE, results='hide'}
 source('load_libraries.R')
 source('load_functions.R')
 
@@ -26,18 +25,24 @@ test <- read.csv("https://gist.githubusercontent.com/louisdubaere/1f36adc493ccc7
 
 ## Exploratory Data Analysis
 
-You can also embed plots, for example:
+We will start with the exploratory data analysis, by analyzing the type of every column in the train data set.
 
 ```{r check_types}
 str(train)
 head(train)
 ```
 
+We can see that some columns have a doubtful type associated with it. For example 'date' is a factor and 'waterfront' is an int (while it seems a binary variable). These will later be solved.
+
+We check if there are any missing values.
+
 ```{r check missing values}
 sum(is.na(train))
 
 ```
-There are no missing values in the dataset.
+It turns out there are no missing values in the dataset.
+
+Now we will analyze the data visually with some graphs. We will begin with some histograms that represent the distribution of some columns, to understand the data.
 
 ```{r histograms}
 hist_data <- train[, !names(train) %in% c("id", "date", "zipcode")] 
@@ -48,7 +53,7 @@ ggplot(gather(hist_data), aes(value)) +
 ```
 
 On the histograms, we see some columns that can be classified as 'factors'. 
-These being: condition, view, waterfront, we convert them to factors
+These being: condition, view, waterfront. We convert these to factors
 
 ```{r factorize columns}
 factors <- c("condition", "view", "waterfront")
@@ -56,21 +61,36 @@ factors <- c("condition", "view", "waterfront")
 train_factorized <- factorize_columns(train, factors)
 ```
 
-```{r correlation plot and boxplots}
+Next up, we take a look at the correlation between the variables.
+
+
+```{r correlation plot}
 corr <- cor(train_factorized[,numerical_columns(train_factorized)])
 corrplot(corr, order= 'AOE')
 
+```
+
+Bedrooms, sqft_living, grade, bathrooms, sqft_living15, sqft_above and sqft_basement have the highest positive correlation with the price.
+We can drop some columns: zipcode, long, lat, id: don't add information about the price, they don't have a correlation with the price.
+
+Now we will look at the boxplots for the different factors of the three factor columns (condition, view and waterfront), regarding the price.
+
+```{r boxplots}
 gathered_factors <- gather(train_factorized[,factors])
 gathered_factors$price <- rep(train_factorized$price, times = 3)
 ggplot(aes(y = price, x= value), data = gathered_factors) + geom_boxplot() + facet_wrap(~key, scales = 'free_x')
 
 ```
 
+We see that, the higher the condition and the view, the higher the average price of the house. We can also see that a waterfront house has a higher average price than a non-waterfront house.
+
+Now let's compare some variables (bathrooms, floors, grade, sqft_above, sqft_basement and sqft_living15) for different price-ranges. We create 4 equally populated price-ranges and compare these previously mentioned variables for each price range with density plots.
+
 ```{r density plots}
 groups <- quant_groups(train_factorized$price, 4)
 density_df <- cbind(data.frame(train_factorized), groups)
 
-density_plot_columns <- c("bathrooms", "floors", "grade", "sqft_above", "sqft_living15")
+density_plot_columns <- c("bathrooms", "floors", "grade", "sqft_above", "sqft_living15", "sqft_basement")
 
 gathered_density <- gather(density_df[,density_plot_columns])
 gathered_density$group <- rep(density_df$groups, times = length(density_plot_columns))
@@ -80,14 +100,7 @@ ggplot(aes(color = group, x= value), data = gathered_density) + geom_density() +
 #ggplot(density_df, aes(x=sqft_living15, color=groups)) + geom_density()
 ```
 
-
-# Bedrooms, sqft_living, grade, bathrooms, sqft_living15, sqft_above and sqft_basement have the
-# highest positive correlation with the price
-
-# Conclusions:
-# We can drop some columns: zipcode, long, lat, id: don't add information about the price, they don't
-# have a correlation with the price.
-# We can also drop the date, but we will first extract the year from it.
+We can see some interesting patterns in these density plots.
 
 # Data Preparation
 
@@ -117,7 +130,7 @@ summary(lm)
 ```
 
 
-
+# 
 
 
 
