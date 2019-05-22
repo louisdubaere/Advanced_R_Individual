@@ -1,0 +1,124 @@
+---
+title: "House Prices"
+author: "Louis Dubaere"
+date: "22/5/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r load data and functions/libraries}
+source('load_libraries.R')
+source('load_functions.R')
+
+train <- read.csv("https://gist.githubusercontent.com/louisdubaere/946bfbcf88ec80b99bf888a56ebe708b/raw/9e3d027657f840ce793217ee8308dd71ac727bce/house_price_train.csv")
+test <- read.csv("https://gist.githubusercontent.com/louisdubaere/1f36adc493ccc7018e70a54158ae5974/raw/fe88c56ef3e672e6bd4bac091b27454b9f2a1477/house_price_test.csv")
+
+```
+
+## Exploratory Data Analysis
+
+You can also embed plots, for example:
+
+```{r check_types}
+str(train)
+head(train)
+```
+
+```{r check missing values}
+sum(is.na(train))
+
+```
+There are no missing values in the dataset.
+
+```{r histograms}
+hist_data <- train[, !names(train) %in% c("id", "date", "zipcode")] 
+
+ggplot(gather(hist_data), aes(value)) + 
+  geom_histogram(bins = 10) + 
+  facet_wrap(~key, scales = 'free_x')
+```
+
+On the histograms, we see some columns that can be classified as 'factors'. 
+These being: condition, view, waterfront, we convert them to factors
+
+```{r factorize columns}
+factors <- c("condition", "view", "waterfront")
+
+train_factorized <- factorize_columns(train, factors)
+```
+
+```{r correlation plot and boxplots}
+corr <- cor(train_factorized[,numerical_columns(train_factorized)])
+corrplot(corr, order= 'AOE')
+
+gathered_factors <- gather(train_factorized[,factors])
+gathered_factors$price <- rep(train_factorized$price, times = 3)
+ggplot(aes(y = price, x= value), data = gathered_factors) + geom_boxplot() + facet_wrap(~key, scales = 'free_x')
+
+```
+
+```{r density plots}
+groups <- quant_groups(train_factorized$price, 4)
+density_df <- cbind(data.frame(train_factorized), groups)
+
+density_plot_columns <- c("bathrooms", "floors", "grade", "sqft_above", "sqft_living15")
+
+gathered_density <- gather(density_df[,density_plot_columns])
+gathered_density$group <- rep(density_df$groups, times = length(density_plot_columns))
+
+ggplot(aes(color = group, x= value), data = gathered_density) + geom_density() + facet_wrap(~key, scales = 'free')
+
+#ggplot(density_df, aes(x=sqft_living15, color=groups)) + geom_density()
+```
+
+
+# Bedrooms, sqft_living, grade, bathrooms, sqft_living15, sqft_above and sqft_basement have the
+# highest positive correlation with the price
+
+# Conclusions:
+# We can drop some columns: zipcode, long, lat, id: don't add information about the price, they don't
+# have a correlation with the price.
+# We can also drop the date, but we will first extract the year from it.
+
+# Data Preparation
+
+```{r drop_columns and add_date_info}
+train_dropped <- drop_columns(train_factorized, c("zipcode", "id"))
+
+date_list <- strsplit(as.character(train_dropped$date), "/")
+train_dropped$year <- sapply(date_list, function(x) as.character(x[3]))
+train_dropped$month <- sapply(date_list, function(x) x[1])
+train_dropped$day <- sapply(date_list, function(x) x[2])
+
+train_dropped$date <- NULL
+```
+
+# Baseline model
+
+```{r train_test}
+splitted <- split_train_test(train_dropped)
+```
+
+
+```{r baseline}
+
+lm <- lm(price~., data = splitted$Train)
+summary(lm)
+
+```
+
+
+
+
+
+
+
