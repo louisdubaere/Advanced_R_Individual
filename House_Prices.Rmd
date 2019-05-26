@@ -114,6 +114,7 @@ gathered_density$group <- rep(density_df$groups, times = length(density_plot_col
 ggplot(aes(color = group, x= value), data = gathered_density) + geom_density() + facet_wrap(~key, scales = 'free')
 
 ```
+
 We can see some interesting patterns in these density plots. Houses with higher prices usually have higher values for all these variables.
 
 Now we will look at the boxplots for the different factors of the factor columns (condition, view, waterfront, bathrooms, bedrooms, floors, grade and zipcode), regarding the price.
@@ -182,7 +183,10 @@ get_train_data_MAPE_lm(data_engineered, train_n, train_price)
 
 ```
 
-We will bin some continuous columns.
+This already results in an imporvement of the MAPE score.
+
+Now we will bin some continuous columns.
+
 ```{r bin columns, message=FALSE, warning=FALSE}
 #lat, sqft_basement, sqft_living, sqft_living15, sqft_above
 
