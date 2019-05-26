@@ -1,5 +1,5 @@
 ---
-title: "House Prices"
+title: "House Prices Prediction"
 author: "Louis Dubaere"
 date: "22/5/2019"
 output: html_document
@@ -8,11 +8,13 @@ output: html_document
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 ```
+## Introduction
+
+This project tries to predict the price of houses, based on information about these houses. We have two sources of data: one dataframe 'train', with 17277 observations of houses with the price given, and a second dataframe 'test', where the price of the 4320 houses is not given and we should try to predict this price.
 
 ## Load the data
 
 First, we will load the data and the different scripts that provide the necessary libraries and functions.
-
 
 ```{r load data and functions/libraries, message=FALSE, warning=FALSE, results='hide'}
 source('load_libraries.R')
@@ -21,6 +23,13 @@ source('load_functions.R')
 train <- read.csv("https://gist.githubusercontent.com/louisdubaere/946bfbcf88ec80b99bf888a56ebe708b/raw/9e3d027657f840ce793217ee8308dd71ac727bce/house_price_train.csv")
 test <- read.csv("https://gist.githubusercontent.com/louisdubaere/1f36adc493ccc7018e70a54158ae5974/raw/fe88c56ef3e672e6bd4bac091b27454b9f2a1477/house_price_test.csv")
 
+train_n <- nrow(train)
+test_n <- nrow(test)
+
+train_price <- train$price
+data <- rbind(drop_columns(train,"price"),test)
+test_ids <- test$id
+
 ```
 
 ## Exploratory Data Analysis
@@ -28,8 +37,8 @@ test <- read.csv("https://gist.githubusercontent.com/louisdubaere/1f36adc493ccc7
 We will start with the exploratory data analysis, by analyzing the type of every column in the train data set.
 
 ```{r check_types}
-str(train)
-head(train)
+str(data)
+head(data)
 ```
 
 We can see that some columns have a doubtful type associated with it. For example 'date' is a factor and 'waterfront' is an int (while it seems a binary variable). These will later be solved.
@@ -37,123 +46,172 @@ We can see that some columns have a doubtful type associated with it. For exampl
 We check if there are any missing values.
 
 ```{r check missing values}
-sum(is.na(train))
-
+sum(is.na(data))
 ```
 It turns out there are no missing values in the dataset.
 
 Now we will analyze the data visually with some graphs. We will begin with some histograms that represent the distribution of some columns, to understand the data.
 
 ```{r histograms}
-hist_data <- train[, !names(train) %in% c("id", "date", "zipcode")] 
+hist_data <- data[, !names(data) %in% c("id", "date")] 
 
 ggplot(gather(hist_data), aes(value)) + 
   geom_histogram(bins = 10) + 
   facet_wrap(~key, scales = 'free_x')
 ```
 
+
 On the histograms, we see some columns that can be classified as 'factors'. 
-These being: condition, view, waterfront. We convert these to factors
+These being: condition, view, waterfront, bathrooms, bedrooms, floors, grade and zipcode. We convert these to factors in the data preparation.
 
-```{r factorize columns}
-factors <- c("condition", "view", "waterfront")
 
-train_factorized <- factorize_columns(train, factors)
+Now we will take a look at the distribution of price.
+
+```{r boxplot price}
+# We see a lot of outliers in price in the data. We will delete these.
+ggplot(aes(y = price), data = train) + geom_boxplot()
+
+outliers <- boxplot(train$price, plot=F)$out
+train_without_outliers <- train[-which(train$price %in% outliers),]
+
+ggplot(aes(y = price), data = train_without_outliers) + geom_boxplot()
 ```
 
+There are a lot of outliers in the price column. We delete these for our model.
+The distribution for price is skewed to the right, as we can see on the following histogram.
+
+```{r histogram price}
+options(scipen=10000)
+ggplot(train_without_outliers, aes(x = price, fill = ..count..)) +
+  geom_histogram(binwidth = 5000) +
+  ggtitle("Figure 1 Histogram of SalePrice") +
+  ylab("Count of houses") +
+  xlab("Housing Price") + 
+  theme(plot.title = element_text(hjust = 0.5))
+
+```
 Next up, we take a look at the correlation between the variables.
 
-
 ```{r correlation plot}
-corr <- cor(train_factorized[,numerical_columns(train_factorized)])
+corr <- cor(train_without_outliers[,numerical_columns(train_without_outliers)])
 corrplot(corr, order= 'AOE')
 
 ```
 
 Bedrooms, sqft_living, grade, bathrooms, sqft_living15, sqft_above and sqft_basement have the highest positive correlation with the price.
-We can drop some columns: zipcode, long, lat, id: don't add information about the price, they don't have a correlation with the price.
 
-Now we will look at the boxplots for the different factors of the three factor columns (condition, view and waterfront), regarding the price.
+Now let's compare some variables (bathrooms, floors, grade, sqft_above, sqft_basement, sqft_living15 and condition) for different price-ranges. We create 4 equally populated price-ranges and compare these previously mentioned variables for each price range with density plots.
 
-```{r boxplots}
-gathered_factors <- gather(train_factorized[,factors])
-gathered_factors$price <- rep(train_factorized$price, times = 3)
-ggplot(aes(y = price, x= value), data = gathered_factors) + geom_boxplot() + facet_wrap(~key, scales = 'free_x')
+```{r density plots, message=FALSE}
+groups <- quant_groups(train_without_outliers$price, 4)
+density_df <- cbind(data.frame(train_without_outliers), groups)
 
-```
-
-We see that, the higher the condition and the view, the higher the average price of the house. We can also see that a waterfront house has a higher average price than a non-waterfront house.
-
-Now let's compare some variables (bathrooms, floors, grade, sqft_above, sqft_basement and sqft_living15) for different price-ranges. We create 4 equally populated price-ranges and compare these previously mentioned variables for each price range with density plots.
-
-```{r density plots}
-groups <- quant_groups(train_factorized$price, 4)
-density_df <- cbind(data.frame(train_factorized), groups)
-
-density_plot_columns <- c("bathrooms", "floors", "grade", "sqft_above", "sqft_living15", "sqft_basement")
+density_plot_columns <- c("bathrooms", "floors", "grade", "sqft_above", "sqft_living15", "sqft_basement", "condition")
 
 gathered_density <- gather(density_df[,density_plot_columns])
 gathered_density$group <- rep(density_df$groups, times = length(density_plot_columns))
 
 ggplot(aes(color = group, x= value), data = gathered_density) + geom_density() + facet_wrap(~key, scales = 'free')
 
-#ggplot(density_df, aes(x=sqft_living15, color=groups)) + geom_density()
+```
+We can see some interesting patterns in these density plots. Houses with higher prices usually have higher values for all these variables.
+
+Now we will look at the boxplots for the different factors of the factor columns (condition, view, waterfront, bathrooms, bedrooms, floors, grade and zipcode), regarding the price.
+
+```{r boxplots, message=FALSE, warning=FALSE}
+factors <- c("condition", "view", "waterfront", "bathrooms", "bedrooms", "floors", "grade", "zipcode")
+
+train_factorized <- factorize_columns(train_without_outliers, factors)
+gathered_factors <- gather(train_factorized[,factors])
+gathered_factors$price <- rep(train_factorized$price, times = length(factors))
+ggplot(aes(y = price, x= value), data = gathered_factors) + geom_boxplot() + facet_wrap(~key, scales = 'free_x')
 ```
 
-We can see some interesting patterns in these density plots.
+We see that the average price of the house is different for different values of the factor variables. Generally, the higher the values of these variables, the higher the average price.
 
-# Data Preparation
+## Data Preparation
 
-For the data preparation, we start by extracting the year, month and day from the date column. After that, we drop the zipcode, id and date column.
+For the data preparation, we start by extracting the year from the date column. After that, we drop the id and date column.
 
 ```{r drop_columns and add_date_info}
 
-date_list <- strsplit(as.character(train_dropped$date), "/")
-train_dropped$year <- sapply(date_list, function(x) as.character(x[3]))
-train_dropped$month <- sapply(date_list, function(x) as.numeric(x[1]))
-train_dropped$day <- sapply(date_list, function(x) as.numeric(x[2]))
+train_price <- train_without_outliers$price
+train_n <- nrow(train_without_outliers)
+test_n <- nrow(test)
+data <- rbind(drop_columns(train_without_outliers,"price"),test)
+factors <- c("condition", "view", "waterfront", "bathrooms", "bedrooms", "floors", "grade", "zipcode")
 
-train_dropped <- drop_columns(train_factorized, c("zipcode", "id", "date"))
+data_fac <- factorize_columns(data, factors)
+
+
+date_list <- strsplit(as.character(data$date), "/")
+data_dropped <- drop_columns(data_fac, c("id", "date"))
+
+data_dropped$year <- sapply(date_list, function(x) as.numeric(x[3]))
+
+
 ```
 
-# Baseline model
+## Baseline model
 
 Now we will train a linear regression model on our prepared data. We split the data in 80% train and 20% test.
 
-```{r train_test}
-#splitted <- split_train_test(train_dropped)
+```{r baseline, message=FALSE, warning=FALSE}
+
+get_train_data_MAPE_lm(data_dropped, train_n, train_price)
+
 ```
 
-We train a linear regression model to predict the price.
-
-```{r baseline}
-calculate_MAPE_lm(train_dropped)
-```
-
-The baseline MAPE score is 25.33 %.
+The baseline MAPE score for our model is 14.73 %.
 
 ## Feature Engineering
 
-We will now try to do feature engineering, in order to improve the MAPE score.
+We will now try to perform feature engineering, in order to improve the MAPE score.
 
-First of all, we will add a column that represents the fact that a house got renovated or not. After that we add the age of the house.
+First of all, we will create columns that represents the fact that a house got renovated or not and the fact that a house has a basement or not.
 
-```{r renovated}
+```{r renovated, message=FALSE, warning=FALSE}
 
-train_engineered <- transform(train_dropped, renovated= ifelse(yr_renovated==0, 0, 1))
-train_engineered$age <- as.numeric(train_engineered$year) - train_engineered$yr_built
+data_engineered <- transform(data_dropped, renovated= ifelse(yr_renovated==0, 0, 1))
+data_engineered$renovated <- as.factor(data_engineered$renovated)
+data_engineered <- transform(data_engineered, basement= ifelse(sqft_basement>0, 1, 0))
+data_engineered$basement <- as.factor(data_engineered$basement)
+
+get_train_data_MAPE_lm(data_engineered, train_n, train_price)
+
+
+```
+
+We will bin some continuous columns.
+```{r bin columns, message=FALSE, warning=FALSE}
+#lat, sqft_basement, sqft_living, sqft_living15, sqft_above
+
+columns_to_bin <- c("lat", "sqft_living", "sqft_living15", "sqft_above", "sqft_lot", "sqft_lot15")
+data_binned <- data.frame(data_engineered)
+for(name in columns_to_bin) {
+  data_binned[,name] <- quant_groups(data_engineered[,name], 10)
+}
+
+get_train_data_MAPE_lm(data_binned, train_n, train_price)
 
 ```
 
+This results in a MAPE of 14.17%, an improvement of 0.56% compared to the baseline.
 
-```{r test}
-x <- drop_columns(train_engineered, c("price"))
-y <- train_engineered$price
-lambda <- 10^seq(10, -2, length = 100)
+We will keep the data as it is right now, and create a model based on the whole train data in the next section. Then we are able to make predictions for the test data.
 
-ridge.mod <- glmnet(x, y, alpha = 0, lambda = lambda)
+## Predict the price of the test data
 
-predict(ridge.mod, data = splitted$Train)
+Now we will train a model on all of the train data, and then make predictions on the test data.
+
+```{r predict prices}
+
+prediction <- predict_house_prices_lm(data_binned, train_n, train_price)
+
+predictions_id <- data.frame(cbind(test_ids,prediction))
+
+write.csv(predictions_id, "predictions.csv")
 
 ```
+
 
